@@ -121,53 +121,95 @@
 
         // Tìm và hiển thị tuyến xe buýt
         function findRoute() {
-            let startPoint = document.getElementById('start').value;
-            let endPoint = document.getElementById('end').value;
+            let startPoint = document.getElementById('start').value.trim();
+            let endPoint = document.getElementById('end').value.trim();
+
+            // Kiểm tra dữ liệu đầu vào hợp lệ
+            if (!startPoint || !endPoint) {
+            alert('Please enter both start and end points.');
+            return;
+            }
 
             fetch('http://127.0.0.1:5000/found_route', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ start_address: startPoint, end_address: endPoint })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_address: startPoint, end_address: endPoint })
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log(response.data)
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+            })
             .then(data => {
-                if (data.status === 'success') {
-                    let routeData = data.data;
+            console.log('API Response:', data); // Log toàn bộ phản hồi từ API
 
-                    // Xóa route cũ nếu có
-                    if (routeControl) map.removeControl(routeControl);
-                    markers.forEach(marker => map.removeLayer(marker));
-                    markers = [];
+            // Kiểm tra nếu dữ liệu hợp lệ
+            if (data.status === 'success' && Array.isArray(data.data.path) && data.data.path.length > 0) {
+                let routeData = data.data;
 
-                    // Hiển thị các trạm và lộ trình
-                    let waypoints = [];
-                    let routeInfoDiv = document.getElementById('bus-route-info');
-                    routeInfoDiv.innerHTML = '<h3>Bus Routes Information:</h3>';
+                // Xóa route và marker cũ
+                if (routeControl) map.removeControl(routeControl);
+                if (startMarker) map.removeLayer(startMarker);
+                if (endMarker) map.removeLayer(endMarker);
+                markers.forEach(marker => map.removeLayer(marker));
+                markers = [];
 
-                    routeData.path.forEach((stop, index) => {
-                        waypoints.push(L.latLng(stop.lat, stop.lon));
-                        let marker = L.marker([stop.lat, stop.lon])
-                            .bindPopup(`<b>${stop.stop_name}</b><br>Route: ${stop.route}`)
-                            .addTo(map);
-                        markers.push(marker);
-                        routeInfoDiv.innerHTML += `<p>${index + 1}. ${stop.stop_name} - <b>${stop.route}</b></p>`;
-                    });
+                // Khởi tạo waypoint và khu vực thông tin tuyến đường
+                let waypoints = [];
+                let routeInfoDiv = document.getElementById('bus-route-info');
+                routeInfoDiv.innerHTML = '<h3>Bus Routes Information:</h3>';
 
-                    routeControl = L.Routing.control({
-                        waypoints: waypoints,
-                        routeWhileDragging: false,
-                        createMarker: function (i, waypoint) {
-                            return L.marker(waypoint.latLng)
-                                .bindPopup(`<b>${routeData.path[i].stop_name}</b><br>Route: ${routeData.path[i].route}`);
-                        }
-                    }).addTo(map);
+                // Duyệt qua các điểm dừng để thêm marker và thông tin
+                routeData.path.forEach((stop, index) => {
+                    console.log('Stop Data:', stop); // Log dữ liệu từng điểm dừng
 
-                    map.fitBounds(L.latLngBounds(waypoints));
-                } else {
-                    alert('Error: ' + data.message);
-                }
+                    // Kiểm tra và gán giá trị mặc định nếu thiếu
+                    const stopName = stop.stop_name || 'Unknown Stop';
+                    const routeName = stop.route || 'No Route Info';
+
+                    waypoints.push(L.latLng(stop.lat, stop.lon));
+
+                    let marker = L.marker([stop.lat, stop.lon])
+                        .bindPopup(`<b>${index === 0 ? 'Start Point: ' : ''}${stopName}</b><br>Route: ${routeName}`)
+                        .addTo(map);
+                    markers.push(marker);
+
+                    // Thêm thông tin vào khu vực bus route
+                    routeInfoDiv.innerHTML += `<p>${index + 1}. ${stopName} - <b>Route: ${routeName}</b></p>`;
+                });
+
+                // Hiển thị tuyến đường trên bản đồ
+                routeControl = L.Routing.control({
+                    waypoints: waypoints, 
+                    routeWhileDragging: false,
+                    createMarker: function (i, waypoint) {
+                        console.log("Waypoint: " + JSON.stringify(waypoints, null, 2));
+                        console.log("Route Data: " + JSON.stringify(routeData.path, null, 2));
+                        console.log("Route: " + JSON.stringify(routeData.path[i], null, 2));
+
+                        const stop = routeData.path[i];
+                        const stopName = stop.stop_name || 'Unknown Stop';
+                        const routeName = stop.route || 'No Route Info';
+
+                        return L.marker(waypoint.latLng)
+                            .bindPopup(`<b>${stopName}</b><br>Route: ${routeName}`);
+                    }
+                }).addTo(map);
+
+                // Focus vào khu vực chứa lộ trình
+                map.fitBounds(L.latLngBounds(waypoints));
+
+            } else {
+                alert('No route found or invalid response from server.');
+            }
             })
-            .catch(error => console.error('Error finding route:', error));
+            .catch(error => {
+            console.error('Error finding route:', error);
+            alert('An error occurred while finding the route. Please try again.');
+            });
+
         }
 
         // Reset bản đồ
